@@ -1,0 +1,28 @@
+# OS / editors
+.DS_Store
+.idea/
+.vscode/
+*.swp
+
+# Env & secrets
+.env
+.env.*
+!.env.example
+
+# Go
+/backend/bin/
+*.exe
+*.test
+*.out
+coverage.*
+
+# Node
+node_modules/
+dist/
+*.tsbuildinfo
+npm-debug.log*
+
+# Local tooling
+graphify-out/
+.claude/
+tmp/
