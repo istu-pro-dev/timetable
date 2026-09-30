@@ -1,6 +1,6 @@
 .PHONY: lint test build dev up down \
 	backend-lint backend-test backend-build \
-	frontend-lint frontend-test frontend-build
+	frontend-lint frontend-test frontend-build sqlc
 
 BACKEND_DIR  := backend
 FRONTEND_DIR := frontend
@@ -14,6 +14,9 @@ backend-lint:
 
 backend-test:
 	cd $(BACKEND_DIR) && go test -race ./...
+
+sqlc:
+	cd $(BACKEND_DIR) && sqlc generate
 
 backend-build:
 	cd $(BACKEND_DIR) && go build -o bin/server ./cmd/server

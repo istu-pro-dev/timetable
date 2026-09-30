@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/istu-pro-dev/timetable/backend/internal/api"
+	"github.com/istu-pro-dev/timetable/backend/internal/store"
 )
 
 func main() {
@@ -25,6 +26,20 @@ func main() {
 func run(logger *slog.Logger) error {
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 	defer stop()
+
+	if dbURL := os.Getenv("DATABASE_URL"); dbURL != "" {
+		st, err := store.Open(ctx, dbURL)
+		if err != nil {
+			return err
+		}
+		defer st.Close()
+		if err := st.Migrate(ctx); err != nil {
+			return err
+		}
+		logger.Info("database migrated")
+	} else {
+		logger.Warn("DATABASE_URL is not set, running without a database")
+	}
 
 	addr := os.Getenv("HTTP_ADDR")
 	if addr == "" {
