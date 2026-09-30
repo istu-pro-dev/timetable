@@ -24,6 +24,8 @@ type colouring struct {
 	blocked [][]uint16
 	// sat is the number of blocked domain slots per lesson (DSatur saturation).
 	sat []int
+	// roomLessons lists placed lessons per room; maintained only by the repair search.
+	roomLessons [][]int32
 }
 
 func newColouring(g *Graph, s *engine.Schedule, r *rand.Rand) *colouring {
