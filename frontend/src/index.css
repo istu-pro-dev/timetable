@@ -1,23 +1,65 @@
+@import 'tailwindcss';
+
+/* Dark mode follows the `dark` class on <html> (src/theme/theme.ts), not only the OS setting. */
+@custom-variant dark (&:where(.dark, .dark *));
+
+/* Semantic colour tokens: components use bg-surface, text-muted, border-border, … */
 :root {
-  font-family:
-    system-ui,
-    -apple-system,
-    'Segoe UI',
-    Roboto,
-    sans-serif;
-  color-scheme: light dark;
+  --c-bg: oklch(0.985 0.002 250);
+  --c-surface: oklch(1 0 0);
+  --c-surface-2: oklch(0.965 0.004 250);
+  --c-fg: oklch(0.22 0.02 260);
+  --c-muted: oklch(0.5 0.02 260);
+  --c-border: oklch(0.9 0.006 260);
+  --c-primary: oklch(0.52 0.18 260);
+  --c-primary-fg: oklch(0.99 0 0);
+  --c-danger: oklch(0.55 0.2 27);
+  --c-warning: oklch(0.72 0.16 70);
+  --c-success: oklch(0.6 0.14 150);
+  --c-ring: oklch(0.62 0.17 260);
 }
 
-body {
-  margin: 0;
+.dark {
+  --c-bg: oklch(0.17 0.01 260);
+  --c-surface: oklch(0.21 0.012 260);
+  --c-surface-2: oklch(0.25 0.014 260);
+  --c-fg: oklch(0.94 0.005 260);
+  --c-muted: oklch(0.7 0.015 260);
+  --c-border: oklch(0.32 0.015 260);
+  --c-primary: oklch(0.68 0.15 260);
+  --c-primary-fg: oklch(0.16 0.02 260);
+  --c-danger: oklch(0.68 0.18 25);
+  --c-warning: oklch(0.8 0.14 75);
+  --c-success: oklch(0.72 0.14 150);
+  --c-ring: oklch(0.72 0.14 260);
 }
 
-.app-header {
-  padding: 12px 24px;
-  font-weight: 600;
-  border-bottom: 1px solid color-mix(in srgb, currentColor 15%, transparent);
+@theme inline {
+  --font-sans: system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+  --color-bg: var(--c-bg);
+  --color-surface: var(--c-surface);
+  --color-surface-2: var(--c-surface-2);
+  --color-fg: var(--c-fg);
+  --color-muted: var(--c-muted);
+  --color-border: var(--c-border);
+  --color-primary: var(--c-primary);
+  --color-primary-fg: var(--c-primary-fg);
+  --color-danger: var(--c-danger);
+  --color-warning: var(--c-warning);
+  --color-success: var(--c-success);
+  --color-ring: var(--c-ring);
 }
 
-.app-main {
-  padding: 24px;
+@layer base {
+  html {
+    color-scheme: light dark;
+  }
+
+  body {
+    @apply bg-bg text-fg font-sans antialiased;
+  }
+
+  :focus-visible {
+    @apply outline-2 outline-offset-2 outline-ring;
+  }
 }
