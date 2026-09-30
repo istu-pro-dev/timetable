@@ -1,35 +1,27 @@
-import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
-import { render, screen } from '@testing-library/react'
+import { screen } from '@testing-library/react'
 import { afterEach, describe, expect, it, vi } from 'vitest'
+import { adminUser, mockFetch, renderPage } from '../test/utils.tsx'
 import { HomePage } from './HomePage.tsx'
-
-function renderPage() {
-  const client = new QueryClient({ defaultOptions: { queries: { retry: false } } })
-  render(
-    <QueryClientProvider client={client}>
-      <HomePage />
-    </QueryClientProvider>,
-  )
-}
 
 describe('HomePage', () => {
   afterEach(() => vi.unstubAllGlobals())
 
-  it('shows API as running when healthz is ok', async () => {
-    vi.stubGlobal(
-      'fetch',
-      vi.fn(() => Promise.resolve(Response.json({ status: 'ok' }))),
-    )
-    renderPage()
+  it('greets the user and shows API as running when healthz is ok', async () => {
+    mockFetch({
+      'GET /api/auth/me': () => adminUser,
+      'GET /api/healthz': () => ({ status: 'ok' }),
+    })
+    renderPage(<HomePage />)
     expect(await screen.findByText('работает')).toBeInTheDocument()
+    expect(await screen.findByText('Здравствуйте, Администратор!')).toBeInTheDocument()
   })
 
   it('shows API as unavailable on error', async () => {
-    vi.stubGlobal(
-      'fetch',
-      vi.fn(() => Promise.resolve(new Response(null, { status: 502 }))),
-    )
-    renderPage()
+    mockFetch({
+      'GET /api/auth/me': () => adminUser,
+      'GET /api/healthz': () => new Response(null, { status: 502 }),
+    })
+    renderPage(<HomePage />)
     expect(await screen.findByText('недоступен')).toBeInTheDocument()
   })
 })

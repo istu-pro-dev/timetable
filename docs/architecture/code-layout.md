@@ -79,6 +79,20 @@ lessons, then `biweekly_count` biweekly ones, `seq` 1..N). Updating an item rege
 only when a count changes; the old lessons' assignments are deleted with them (`ON DELETE CASCADE`),
 so the item must be placed again in existing schedules.
 
+### Frontend
+
+`frontend/src`: `api/` (typed fetch client + TanStack Query hooks), `auth/` (session provider,
+route guards), `components/` (UI kit on Tailwind v4 with light/dark tokens in `index.css`),
+`i18n/` (typed RU dictionary, `t('nav.home')`), `layout/` (shell with role-aware sidebar),
+`pages/` (lazy-loaded routes, `router.tsx`).
+
+- API types are generated from the spec: `npm run gen:api` writes `src/api/schema.ts`
+  (openapi-typescript; `src/api/types.ts` gives the schemas short names). A test fails when the
+  committed file is stale, so **a change to `backend/api/openapi.yaml` needs `cd frontend && npm run gen:api`**.
+- Session: on start the app calls `GET /api/auth/me`; any 401 triggers one `POST /api/auth/refresh`
+  (shared by concurrent requests) and a retry, then a redirect to `/login`.
+- Dev: `API_URL=http://localhost:8081 npm run dev` proxies `/api` to another API port.
+
 ### Docker compose stack
 
 | Service | Image / build | Port (host) |
