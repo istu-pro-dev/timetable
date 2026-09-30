@@ -120,6 +120,17 @@ func (q *Queries) ListSchedules(ctx context.Context) ([]Schedule, error) {
 	return items, nil
 }
 
+const lockSchedule = `-- name: LockSchedule :one
+SELECT id FROM schedules WHERE id = $1 FOR UPDATE
+`
+
+func (q *Queries) LockSchedule(ctx context.Context, id int64) (int64, error) {
+	row := q.db.QueryRow(ctx, lockSchedule, id)
+	var id_2 int64
+	err := row.Scan(&id_2)
+	return id_2, err
+}
+
 const upsertAssignment = `-- name: UpsertAssignment :exec
 INSERT INTO assignments (schedule_id, lesson_id, day, period, parity, room_id, pinned)
 VALUES ($1, $2, $3, $4, $5, $6, $7)

@@ -22,3 +22,6 @@ SET day = EXCLUDED.day, period = EXCLUDED.period, parity = EXCLUDED.parity,
 
 -- name: DeleteAssignment :execrows
 DELETE FROM assignments WHERE schedule_id = $1 AND lesson_id = $2;
+
+-- name: LockSchedule :one
+SELECT id FROM schedules WHERE id = $1 FOR UPDATE;
