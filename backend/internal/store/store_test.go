@@ -103,7 +103,7 @@ func TestReferenceAndScheduleRoundTrip(t *testing.T) {
 
 	// Moving the lesson updates the row in place.
 	if err := s.UpsertAssignment(ctx, db.UpsertAssignmentParams{
-		ScheduleID: f.schedule.ID, LessonID: f.lesson.ID, Day: 2, Period: 1, Parity: db.ParityOdd, Pinned: true,
+		ScheduleID: f.schedule.ID, LessonID: f.lesson.ID, Day: 2, Period: 1, Parity: db.ParityEvery, Pinned: true,
 	}); err != nil {
 		t.Fatal(err)
 	}
@@ -111,7 +111,7 @@ func TestReferenceAndScheduleRoundTrip(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(got) != 1 || got[0].Day != 2 || got[0].Parity != db.ParityOdd || got[0].RoomID.Valid || !got[0].Pinned {
+	if len(got) != 1 || got[0].Day != 2 || got[0].Parity != db.ParityEvery || got[0].RoomID.Valid || !got[0].Pinned {
 		t.Fatalf("after move = %+v", got)
 	}
 

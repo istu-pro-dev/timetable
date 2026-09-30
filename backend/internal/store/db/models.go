@@ -202,6 +202,18 @@ type Assignment struct {
 	Parity     Parity
 	RoomID     pgtype.Int8
 	Pinned     bool
+	Cells      pgtype.Range[pgtype.Int4]
+	TeacherID  int64
+}
+
+type AssignmentAudience struct {
+	ScheduleID int64
+	LessonID   int64
+	GroupID    int64
+	Division   string
+	Part       int16
+	Box        interface{}
+	Cells      pgtype.Range[pgtype.Int4]
 }
 
 type Building struct {
@@ -237,6 +249,12 @@ type Group struct {
 	Name   string
 	Course int16
 	Size   int32
+}
+
+type GroupDivision struct {
+	GroupID  int64
+	Division string
+	Idx      int16
 }
 
 type Lesson struct {

@@ -63,7 +63,7 @@ func (q *Queries) GetSchedule(ctx context.Context, id int64) (Schedule, error) {
 }
 
 const listAssignments = `-- name: ListAssignments :many
-SELECT schedule_id, lesson_id, day, period, parity, room_id, pinned FROM assignments WHERE schedule_id = $1 ORDER BY lesson_id
+SELECT schedule_id, lesson_id, day, period, parity, room_id, pinned, cells, teacher_id FROM assignments WHERE schedule_id = $1 ORDER BY lesson_id
 `
 
 func (q *Queries) ListAssignments(ctx context.Context, scheduleID int64) ([]Assignment, error) {
@@ -83,6 +83,8 @@ func (q *Queries) ListAssignments(ctx context.Context, scheduleID int64) ([]Assi
 			&i.Parity,
 			&i.RoomID,
 			&i.Pinned,
+			&i.Cells,
+			&i.TeacherID,
 		); err != nil {
 			return nil, err
 		}
