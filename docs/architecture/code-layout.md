@@ -35,6 +35,18 @@ constraint logic stays pure and fully unit-testable (arch §19).
 |---|---|
 | `make dev` | API on `:8080` + Vite dev server; `/api` is proxied to the API |
 | `make lint test build` | same checks as CI |
-| `make up` / `make down` | full stack in docker compose |
+| `make up` / `make down` | full stack in docker compose (`deploy/docker-compose.yml`) |
 
 Health check: `curl localhost:8080/api/healthz` → `{"status":"ok"}`.
+
+### Docker compose stack
+
+| Service | Image / build | Port (host) |
+|---|---|---|
+| `postgres` | `postgres:17-alpine`, volume `pgdata`, `pg_isready` healthcheck | `127.0.0.1:${POSTGRES_PORT:-5432}` |
+| `api` | `backend/Dockerfile` (context `backend/`, distroless static); gets `DATABASE_URL`, starts after `postgres` is healthy | internal `:8080` |
+| `web` | `frontend/Dockerfile` (context repo root: Vite build → Caddy with `deploy/Caddyfile`); serves the SPA, proxies `/api/*` (incl. WebSocket) to `api` | `${WEB_PORT:-80}` |
+
+Configuration: `cp deploy/.env.example deploy/.env` (optional — every variable has a default).
+Check: `curl localhost/api/healthz` (through Caddy). If ports 80/5432 are taken, set `WEB_PORT` /
+`POSTGRES_PORT`. `docker compose -f deploy/docker-compose.yml down -v` also drops the database volume.

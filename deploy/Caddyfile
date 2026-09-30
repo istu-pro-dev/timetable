@@ -1,0 +1,19 @@
+{
+	admin off
+}
+
+:80 {
+	encode zstd gzip
+
+	# REST + WebSocket API (reverse_proxy upgrades WebSocket connections transparently).
+	handle /api/* {
+		reverse_proxy {$API_UPSTREAM:api:8080}
+	}
+
+	# SPA: serve built assets, fall back to index.html for client-side routes.
+	handle {
+		root * /srv
+		try_files {path} /index.html
+		file_server
+	}
+}
