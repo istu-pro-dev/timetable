@@ -1,0 +1,11 @@
+# Only the web image is built from the repository root (frontend/Dockerfile).
+# The api image uses backend/ as its context (backend/.dockerignore).
+*
+!frontend/
+!deploy/Caddyfile
+frontend/node_modules/
+frontend/dist/
+frontend/dist-ssr/
+frontend/**/*.tsbuildinfo
+frontend/**/*.local
+frontend/**/*.log
