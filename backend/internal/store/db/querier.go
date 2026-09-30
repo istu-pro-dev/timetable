@@ -59,6 +59,9 @@ type Querier interface {
 	ListTeachers(ctx context.Context) ([]Teacher, error)
 	SetRoomAvailability(ctx context.Context, arg SetRoomAvailabilityParams) error
 	SetTeacherAvailability(ctx context.Context, arg SetTeacherAvailabilityParams) error
+	// Wipes reference data, curriculum, lessons and schedules (not the audit log) and restarts
+	// identities. Used by the demo seed (cmd/seed) to reload its dataset idempotently.
+	TruncateSeedData(ctx context.Context) error
 	UpdateBuilding(ctx context.Context, arg UpdateBuildingParams) (Building, error)
 	UpdateCurriculumItem(ctx context.Context, arg UpdateCurriculumItemParams) (CurriculumItem, error)
 	UpdateDiscipline(ctx context.Context, arg UpdateDisciplineParams) (Discipline, error)
