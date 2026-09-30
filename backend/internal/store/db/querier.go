@@ -57,6 +57,7 @@ type Querier interface {
 	ListSubgroups(ctx context.Context) ([]Subgroup, error)
 	ListTeacherAvailability(ctx context.Context) ([]TeacherAvailability, error)
 	ListTeachers(ctx context.Context) ([]Teacher, error)
+	LockSchedule(ctx context.Context, id int64) (int64, error)
 	SetRoomAvailability(ctx context.Context, arg SetRoomAvailabilityParams) error
 	SetTeacherAvailability(ctx context.Context, arg SetTeacherAvailabilityParams) error
 	// Wipes reference data, curriculum, lessons and schedules (not the audit log) and restarts

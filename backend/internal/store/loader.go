@@ -175,7 +175,12 @@ func (s *Store) loadLessons(ctx context.Context, in *engine.Input) error {
 
 // LoadSchedule reads the assignments of a stored schedule into a new engine schedule.
 func (s *Store) LoadSchedule(ctx context.Context, p *engine.Problem, scheduleID int64) (*engine.Schedule, error) {
-	rows, err := s.ListAssignments(ctx, scheduleID)
+	return LoadSchedule(ctx, s.Queries, p, scheduleID)
+}
+
+// LoadSchedule reads a schedule through q, e.g. inside a transaction.
+func LoadSchedule(ctx context.Context, q *db.Queries, p *engine.Problem, scheduleID int64) (*engine.Schedule, error) {
+	rows, err := q.ListAssignments(ctx, scheduleID)
 	if err != nil {
 		return nil, fmt.Errorf("load assignments: %w", err)
 	}
