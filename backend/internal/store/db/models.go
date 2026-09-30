@@ -11,6 +11,67 @@ import (
 	"github.com/jackc/pgx/v5/pgtype"
 )
 
+type ActorType string
+
+const (
+	ActorTypeHuman   ActorType = "human"
+	ActorTypeAiAgent ActorType = "ai_agent"
+	ActorTypeSolver  ActorType = "solver"
+)
+
+func (e *ActorType) Scan(src interface{}) error {
+	switch s := src.(type) {
+	case []byte:
+		*e = ActorType(s)
+	case string:
+		*e = ActorType(s)
+	default:
+		return fmt.Errorf("unsupported scan type for ActorType: %T", src)
+	}
+	return nil
+}
+
+type NullActorType struct {
+	ActorType ActorType
+	Valid     bool // Valid is true if ActorType is not NULL
+}
+
+// Scan implements the Scanner interface.
+func (ns *NullActorType) Scan(value interface{}) error {
+	if value == nil {
+		ns.ActorType, ns.Valid = "", false
+		return nil
+	}
+	ns.Valid = true
+	return ns.ActorType.Scan(value)
+}
+
+// Value implements the driver Valuer interface.
+func (ns NullActorType) Value() (driver.Value, error) {
+	if !ns.Valid {
+		return nil, nil
+	}
+	return string(ns.ActorType), nil
+}
+
+func (e ActorType) Valid() bool {
+	switch e {
+	case ActorTypeHuman,
+		ActorTypeAiAgent,
+		ActorTypeSolver:
+		return true
+	}
+	return false
+}
+
+func AllActorTypeValues() []ActorType {
+	return []ActorType{
+		ActorTypeHuman,
+		ActorTypeAiAgent,
+		ActorTypeSolver,
+	}
+}
+
 type Availability string
 
 const (
@@ -214,6 +275,20 @@ type AssignmentAudience struct {
 	Part       int16
 	Box        interface{}
 	Cells      pgtype.Range[pgtype.Int4]
+}
+
+type AuditLog struct {
+	ID           int64
+	At           pgtype.Timestamptz
+	ActorType    ActorType
+	ActorID      string
+	ViaAssistant bool
+	Entity       string
+	EntityID     string
+	Before       []byte
+	After        []byte
+	Diff         []byte
+	Reason       string
 }
 
 type Building struct {
