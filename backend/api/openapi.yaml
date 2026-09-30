@@ -1,0 +1,1178 @@
+openapi: 3.1.0
+info:
+  title: Timetable API
+  version: 0.1.0
+  description: |
+    REST API of the university timetabling system.
+
+    Authentication: `POST /api/auth/login` sets the `tt_access` (JWT, 15 min) and `tt_refresh`
+    (30 days) HttpOnly cookies and returns the access token, which API clients may send as
+    `Authorization: Bearer <token>`. Reads of reference data need any authenticated user,
+    changes need the `admin` role. Every change is written to the audit log with the
+    authenticated user as the actor.
+
+    Errors always have the body `{"error": {"code": "...", "message": "..."}}`:
+    400 `invalid_request` (malformed JSON, unknown fields, bad path/query parameter),
+    401 `unauthorized`, 403 `forbidden`, 404 `not_found`,
+    409 `already_exists` (unique key), `in_use` (deleting a referenced record), `schedule_conflict`,
+    422 `validation_failed`, `invalid_reference` (referenced record missing), `constraint_violation`,
+    503 `no_database`.
+servers:
+  - url: /
+security:
+  - cookieAuth: []
+  - bearerAuth: []
+tags:
+  - name: system
+  - name: auth
+  - name: buildings
+  - name: room-types
+  - name: rooms
+  - name: groups
+  - name: teachers
+  - name: disciplines
+  - name: time-grid
+  - name: curriculum
+
+paths:
+  /api/healthz:
+    get:
+      tags: [system]
+      operationId: healthz
+      summary: Liveness check
+      security: []
+      responses:
+        "200":
+          description: The server is up.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [status]
+                properties:
+                  status: { type: string, const: ok }
+
+  /api/openapi.yaml:
+    get:
+      tags: [system]
+      operationId: getOpenAPI
+      summary: This specification
+      security: []
+      responses:
+        "200":
+          description: OpenAPI document.
+          content:
+            application/yaml:
+              schema: { type: string }
+
+  # ------------------------------------------------------------------ auth
+  /api/auth/login:
+    post:
+      tags: [auth]
+      operationId: login
+      summary: Log in with a local account
+      description: |
+        Starts a session. Failed attempts are throttled per login and per client IP with
+        exponential backoff (429 with `Retry-After`).
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [login, password]
+              properties:
+                login: { type: string, minLength: 1, maxLength: 64, description: Case-insensitive. }
+                password: { type: string, minLength: 1, maxLength: 256 }
+      responses:
+        "200":
+          description: Logged in; `tt_access` and `tt_refresh` cookies are set.
+          headers:
+            Set-Cookie: { schema: { type: string } }
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Session" }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403":
+          description: The account is disabled (`account_disabled`).
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+        "429":
+          description: Too many failed attempts (`too_many_attempts`).
+          headers:
+            Retry-After: { schema: { type: integer }, description: Seconds to wait. }
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+        "503": { $ref: "#/components/responses/NoDatabase" }
+
+  /api/auth/refresh:
+    post:
+      tags: [auth]
+      operationId: refreshSession
+      summary: Rotate the refresh session and issue a new access token
+      description: Uses the `tt_refresh` cookie. The old refresh token becomes invalid.
+      security:
+        - refreshCookie: []
+      responses:
+        "200":
+          description: New tokens; cookies are replaced.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Session" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "503": { $ref: "#/components/responses/NoDatabase" }
+
+  /api/auth/logout:
+    post:
+      tags: [auth]
+      operationId: logout
+      summary: End the session
+      description: Revokes the refresh session and clears the cookies. Always succeeds.
+      security: []
+      responses:
+        "204": { description: Logged out. }
+
+  /api/auth/me:
+    get:
+      tags: [auth]
+      operationId: me
+      summary: The current account
+      responses:
+        "200":
+          description: The authenticated user.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/User" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "503": { $ref: "#/components/responses/NoDatabase" }
+
+  # ------------------------------------------------------------------ buildings
+  /api/buildings:
+    get:
+      tags: [buildings]
+      operationId: listBuildings
+      summary: List buildings
+      responses:
+        "200":
+          description: Buildings ordered by name.
+          content:
+            application/json:
+              schema: { type: array, items: { $ref: "#/components/schemas/Building" } }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+    post:
+      tags: [buildings]
+      operationId: createBuilding
+      summary: Create a building
+      requestBody: { $ref: "#/components/requestBodies/BuildingInput" }
+      responses:
+        "201": { $ref: "#/components/responses/Building" }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "409": { $ref: "#/components/responses/Conflict" }
+        "422": { $ref: "#/components/responses/Unprocessable" }
+  /api/buildings/{id}:
+    parameters: [{ $ref: "#/components/parameters/ID" }]
+    get:
+      tags: [buildings]
+      operationId: getBuilding
+      summary: Get a building
+      responses:
+        "200": { $ref: "#/components/responses/Building" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { $ref: "#/components/responses/NotFound" }
+    put:
+      tags: [buildings]
+      operationId: updateBuilding
+      summary: Replace a building
+      requestBody: { $ref: "#/components/requestBodies/BuildingInput" }
+      responses:
+        "200": { $ref: "#/components/responses/Building" }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "409": { $ref: "#/components/responses/Conflict" }
+        "422": { $ref: "#/components/responses/Unprocessable" }
+    delete:
+      tags: [buildings]
+      operationId: deleteBuilding
+      summary: Delete a building
+      description: Fails with 409 `in_use` while rooms reference it.
+      responses:
+        "204": { description: Deleted. }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "409": { $ref: "#/components/responses/Conflict" }
+
+  # ------------------------------------------------------------------ room types
+  /api/room-types:
+    get:
+      tags: [room-types]
+      operationId: listRoomTypes
+      summary: List room types
+      responses:
+        "200":
+          description: Room types ordered by code.
+          content:
+            application/json:
+              schema: { type: array, items: { $ref: "#/components/schemas/RoomType" } }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+    post:
+      tags: [room-types]
+      operationId: createRoomType
+      summary: Create a room type
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/RoomType" }
+      responses:
+        "201": { $ref: "#/components/responses/RoomType" }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "409": { $ref: "#/components/responses/Conflict" }
+        "422": { $ref: "#/components/responses/Unprocessable" }
+  /api/room-types/{code}:
+    parameters:
+      - name: code
+        in: path
+        required: true
+        schema: { $ref: "#/components/schemas/Code" }
+    get:
+      tags: [room-types]
+      operationId: getRoomType
+      summary: Get a room type
+      responses:
+        "200": { $ref: "#/components/responses/RoomType" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { $ref: "#/components/responses/NotFound" }
+    put:
+      tags: [room-types]
+      operationId: updateRoomType
+      summary: Rename a room type (the code is immutable)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [name]
+              properties:
+                name: { $ref: "#/components/schemas/Name" }
+      responses:
+        "200": { $ref: "#/components/responses/RoomType" }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "422": { $ref: "#/components/responses/Unprocessable" }
+    delete:
+      tags: [room-types]
+      operationId: deleteRoomType
+      summary: Delete a room type
+      description: Fails with 409 `in_use` while rooms or curriculum items reference it.
+      responses:
+        "204": { description: Deleted. }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "409": { $ref: "#/components/responses/Conflict" }
+
+  # ------------------------------------------------------------------ rooms
+  /api/rooms:
+    get:
+      tags: [rooms]
+      operationId: listRooms
+      summary: List rooms
+      parameters:
+        - { name: building_id, in: query, schema: { $ref: "#/components/schemas/ID" } }
+        - { name: room_type, in: query, schema: { $ref: "#/components/schemas/Code" } }
+      responses:
+        "200":
+          description: Rooms ordered by building and name.
+          content:
+            application/json:
+              schema: { type: array, items: { $ref: "#/components/schemas/Room" } }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+    post:
+      tags: [rooms]
+      operationId: createRoom
+      summary: Create a room
+      requestBody: { $ref: "#/components/requestBodies/RoomInput" }
+      responses:
+        "201": { $ref: "#/components/responses/Room" }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "409": { $ref: "#/components/responses/Conflict" }
+        "422": { $ref: "#/components/responses/Unprocessable" }
+  /api/rooms/{id}:
+    parameters: [{ $ref: "#/components/parameters/ID" }]
+    get:
+      tags: [rooms]
+      operationId: getRoom
+      summary: Get a room
+      responses:
+        "200": { $ref: "#/components/responses/Room" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { $ref: "#/components/responses/NotFound" }
+    put:
+      tags: [rooms]
+      operationId: updateRoom
+      summary: Replace a room
+      requestBody: { $ref: "#/components/requestBodies/RoomInput" }
+      responses:
+        "200": { $ref: "#/components/responses/Room" }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "409": { $ref: "#/components/responses/Conflict" }
+        "422": { $ref: "#/components/responses/Unprocessable" }
+    delete:
+      tags: [rooms]
+      operationId: deleteRoom
+      summary: Delete a room
+      description: Fails with 409 `in_use` while schedule assignments use it.
+      responses:
+        "204": { description: Deleted. }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "409": { $ref: "#/components/responses/Conflict" }
+  /api/rooms/{id}/availability:
+    parameters: [{ $ref: "#/components/parameters/ID" }]
+    get:
+      tags: [rooms]
+      operationId: getRoomAvailability
+      summary: Availability exceptions of a room
+      responses:
+        "200": { $ref: "#/components/responses/Availability" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { $ref: "#/components/responses/NotFound" }
+    put:
+      tags: [rooms]
+      operationId: putRoomAvailability
+      summary: Replace the availability exceptions of a room
+      requestBody: { $ref: "#/components/requestBodies/Availability" }
+      responses:
+        "200": { $ref: "#/components/responses/Availability" }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "422": { $ref: "#/components/responses/Unprocessable" }
+
+  # ------------------------------------------------------------------ groups
+  /api/groups:
+    get:
+      tags: [groups]
+      operationId: listGroups
+      summary: List groups
+      responses:
+        "200":
+          description: Groups ordered by name.
+          content:
+            application/json:
+              schema: { type: array, items: { $ref: "#/components/schemas/Group" } }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+    post:
+      tags: [groups]
+      operationId: createGroup
+      summary: Create a group
+      requestBody: { $ref: "#/components/requestBodies/GroupInput" }
+      responses:
+        "201": { $ref: "#/components/responses/Group" }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "409": { $ref: "#/components/responses/Conflict" }
+        "422": { $ref: "#/components/responses/Unprocessable" }
+  /api/groups/{id}:
+    parameters: [{ $ref: "#/components/parameters/ID" }]
+    get:
+      tags: [groups]
+      operationId: getGroup
+      summary: Get a group
+      responses:
+        "200": { $ref: "#/components/responses/Group" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { $ref: "#/components/responses/NotFound" }
+    put:
+      tags: [groups]
+      operationId: updateGroup
+      summary: Replace a group
+      requestBody: { $ref: "#/components/requestBodies/GroupInput" }
+      responses:
+        "200": { $ref: "#/components/responses/Group" }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "409": { $ref: "#/components/responses/Conflict" }
+        "422": { $ref: "#/components/responses/Unprocessable" }
+    delete:
+      tags: [groups]
+      operationId: deleteGroup
+      summary: Delete a group
+      description: Deletes its subgroups too; fails with 409 `in_use` while curriculum items reference it.
+      responses:
+        "204": { description: Deleted. }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "409": { $ref: "#/components/responses/Conflict" }
+  /api/groups/{id}/subgroups:
+    parameters: [{ $ref: "#/components/parameters/ID" }]
+    get:
+      tags: [groups]
+      operationId: listSubgroups
+      summary: List the subgroups of a group
+      responses:
+        "200":
+          description: Subgroups ordered by division and part.
+          content:
+            application/json:
+              schema: { type: array, items: { $ref: "#/components/schemas/Subgroup" } }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { $ref: "#/components/responses/NotFound" }
+    post:
+      tags: [groups]
+      operationId: createSubgroup
+      summary: Create a subgroup
+      requestBody: { $ref: "#/components/requestBodies/SubgroupInput" }
+      responses:
+        "201": { $ref: "#/components/responses/Subgroup" }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "409": { $ref: "#/components/responses/Conflict" }
+        "422": { $ref: "#/components/responses/Unprocessable" }
+  /api/groups/{id}/subgroups/{subgroup_id}:
+    parameters:
+      - { $ref: "#/components/parameters/ID" }
+      - { name: subgroup_id, in: path, required: true, schema: { $ref: "#/components/schemas/ID" } }
+    get:
+      tags: [groups]
+      operationId: getSubgroup
+      summary: Get a subgroup
+      responses:
+        "200": { $ref: "#/components/responses/Subgroup" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { $ref: "#/components/responses/NotFound" }
+    put:
+      tags: [groups]
+      operationId: updateSubgroup
+      summary: Replace a subgroup
+      requestBody: { $ref: "#/components/requestBodies/SubgroupInput" }
+      responses:
+        "200": { $ref: "#/components/responses/Subgroup" }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "409": { $ref: "#/components/responses/Conflict" }
+        "422": { $ref: "#/components/responses/Unprocessable" }
+    delete:
+      tags: [groups]
+      operationId: deleteSubgroup
+      summary: Delete a subgroup
+      responses:
+        "204": { description: Deleted. }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+
+  # ------------------------------------------------------------------ teachers
+  /api/teachers:
+    get:
+      tags: [teachers]
+      operationId: listTeachers
+      summary: List teachers
+      responses:
+        "200":
+          description: Teachers ordered by full name.
+          content:
+            application/json:
+              schema: { type: array, items: { $ref: "#/components/schemas/Teacher" } }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+    post:
+      tags: [teachers]
+      operationId: createTeacher
+      summary: Create a teacher
+      requestBody: { $ref: "#/components/requestBodies/TeacherInput" }
+      responses:
+        "201": { $ref: "#/components/responses/Teacher" }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "422": { $ref: "#/components/responses/Unprocessable" }
+  /api/teachers/{id}:
+    parameters: [{ $ref: "#/components/parameters/ID" }]
+    get:
+      tags: [teachers]
+      operationId: getTeacher
+      summary: Get a teacher
+      responses:
+        "200": { $ref: "#/components/responses/Teacher" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { $ref: "#/components/responses/NotFound" }
+    put:
+      tags: [teachers]
+      operationId: updateTeacher
+      summary: Replace a teacher
+      requestBody: { $ref: "#/components/requestBodies/TeacherInput" }
+      responses:
+        "200": { $ref: "#/components/responses/Teacher" }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "422": { $ref: "#/components/responses/Unprocessable" }
+    delete:
+      tags: [teachers]
+      operationId: deleteTeacher
+      summary: Delete a teacher
+      description: Fails with 409 `in_use` while curriculum items reference the teacher.
+      responses:
+        "204": { description: Deleted. }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "409": { $ref: "#/components/responses/Conflict" }
+  /api/teachers/{id}/availability:
+    parameters: [{ $ref: "#/components/parameters/ID" }]
+    get:
+      tags: [teachers]
+      operationId: getTeacherAvailability
+      summary: Availability exceptions of a teacher
+      responses:
+        "200": { $ref: "#/components/responses/Availability" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { $ref: "#/components/responses/NotFound" }
+    put:
+      tags: [teachers]
+      operationId: putTeacherAvailability
+      summary: Replace the availability exceptions of a teacher
+      requestBody: { $ref: "#/components/requestBodies/Availability" }
+      responses:
+        "200": { $ref: "#/components/responses/Availability" }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "422": { $ref: "#/components/responses/Unprocessable" }
+
+  # ------------------------------------------------------------------ disciplines
+  /api/disciplines:
+    get:
+      tags: [disciplines]
+      operationId: listDisciplines
+      summary: List disciplines
+      responses:
+        "200":
+          description: Disciplines ordered by name.
+          content:
+            application/json:
+              schema: { type: array, items: { $ref: "#/components/schemas/Discipline" } }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+    post:
+      tags: [disciplines]
+      operationId: createDiscipline
+      summary: Create a discipline
+      requestBody: { $ref: "#/components/requestBodies/DisciplineInput" }
+      responses:
+        "201": { $ref: "#/components/responses/Discipline" }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "409": { $ref: "#/components/responses/Conflict" }
+        "422": { $ref: "#/components/responses/Unprocessable" }
+  /api/disciplines/{id}:
+    parameters: [{ $ref: "#/components/parameters/ID" }]
+    get:
+      tags: [disciplines]
+      operationId: getDiscipline
+      summary: Get a discipline
+      responses:
+        "200": { $ref: "#/components/responses/Discipline" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { $ref: "#/components/responses/NotFound" }
+    put:
+      tags: [disciplines]
+      operationId: updateDiscipline
+      summary: Rename a discipline
+      requestBody: { $ref: "#/components/requestBodies/DisciplineInput" }
+      responses:
+        "200": { $ref: "#/components/responses/Discipline" }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "409": { $ref: "#/components/responses/Conflict" }
+        "422": { $ref: "#/components/responses/Unprocessable" }
+    delete:
+      tags: [disciplines]
+      operationId: deleteDiscipline
+      summary: Delete a discipline
+      description: Fails with 409 `in_use` while curriculum items reference it.
+      responses:
+        "204": { description: Deleted. }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "409": { $ref: "#/components/responses/Conflict" }
+
+  # ------------------------------------------------------------------ time grid
+  /api/time-grid:
+    get:
+      tags: [time-grid]
+      operationId: getTimeGrid
+      summary: The week shape
+      responses:
+        "200": { $ref: "#/components/responses/TimeGrid" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { $ref: "#/components/responses/NotFound" }
+    put:
+      tags: [time-grid]
+      operationId: putTimeGrid
+      summary: Set the week shape
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/TimeGrid" }
+      responses:
+        "200": { $ref: "#/components/responses/TimeGrid" }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "422": { $ref: "#/components/responses/Unprocessable" }
+  /api/periods:
+    get:
+      tags: [time-grid]
+      operationId: listPeriods
+      summary: List periods (pairs) with their times
+      responses:
+        "200":
+          description: Periods ordered by number.
+          content:
+            application/json:
+              schema: { type: array, items: { $ref: "#/components/schemas/Period" } }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+  /api/periods/{number}:
+    parameters:
+      - name: number
+        in: path
+        required: true
+        schema: { type: integer, minimum: 1, maximum: 16 }
+    get:
+      tags: [time-grid]
+      operationId: getPeriod
+      summary: Get a period
+      responses:
+        "200": { $ref: "#/components/responses/Period" }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { $ref: "#/components/responses/NotFound" }
+    put:
+      tags: [time-grid]
+      operationId: putPeriod
+      summary: Create or replace a period
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [starts_at, ends_at]
+              properties:
+                starts_at: { $ref: "#/components/schemas/Clock" }
+                ends_at: { $ref: "#/components/schemas/Clock" }
+      responses:
+        "200": { $ref: "#/components/responses/Period" }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "422": { $ref: "#/components/responses/Unprocessable" }
+    delete:
+      tags: [time-grid]
+      operationId: deletePeriod
+      summary: Delete a period
+      responses:
+        "204": { description: Deleted. }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+
+  # ------------------------------------------------------------------ curriculum
+  /api/curriculum-items:
+    get:
+      tags: [curriculum]
+      operationId: listCurriculumItems
+      summary: List curriculum items with their audience and lessons
+      parameters:
+        - { name: teacher_id, in: query, schema: { $ref: "#/components/schemas/ID" } }
+        - { name: discipline_id, in: query, schema: { $ref: "#/components/schemas/ID" } }
+        - { name: group_id, in: query, description: Items whose audience includes the group., schema: { $ref: "#/components/schemas/ID" } }
+      responses:
+        "200":
+          description: Curriculum items ordered by id.
+          content:
+            application/json:
+              schema: { type: array, items: { $ref: "#/components/schemas/CurriculumItem" } }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+    post:
+      tags: [curriculum]
+      operationId: createCurriculumItem
+      summary: Create a curriculum item
+      description: |
+        Creates the item, its audience and its lessons in one transaction: `weekly_count`
+        weekly lessons followed by `biweekly_count` biweekly ones, numbered `seq` 1..N.
+      requestBody: { $ref: "#/components/requestBodies/CurriculumItemInput" }
+      responses:
+        "201": { $ref: "#/components/responses/CurriculumItem" }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "422": { $ref: "#/components/responses/Unprocessable" }
+  /api/curriculum-items/{id}:
+    parameters: [{ $ref: "#/components/parameters/ID" }]
+    get:
+      tags: [curriculum]
+      operationId: getCurriculumItem
+      summary: Get a curriculum item
+      responses:
+        "200": { $ref: "#/components/responses/CurriculumItem" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { $ref: "#/components/responses/NotFound" }
+    put:
+      tags: [curriculum]
+      operationId: updateCurriculumItem
+      summary: Replace a curriculum item
+      description: |
+        Replaces the item and its audience. When `weekly_count` or `biweekly_count` change, the
+        lessons are regenerated in the same transaction; the old lessons' schedule assignments
+        are deleted with them (ON DELETE CASCADE). A change that makes existing assignments
+        collide (teacher or audience double booking) fails with 409 `schedule_conflict`.
+      requestBody: { $ref: "#/components/requestBodies/CurriculumItemInput" }
+      responses:
+        "200": { $ref: "#/components/responses/CurriculumItem" }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "409": { $ref: "#/components/responses/Conflict" }
+        "422": { $ref: "#/components/responses/Unprocessable" }
+    delete:
+      tags: [curriculum]
+      operationId: deleteCurriculumItem
+      summary: Delete a curriculum item
+      description: Deletes its audience, lessons and their schedule assignments too.
+      responses:
+        "204": { description: Deleted. }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+
+components:
+  securitySchemes:
+    cookieAuth:
+      type: apiKey
+      in: cookie
+      name: tt_access
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+    refreshCookie:
+      type: apiKey
+      in: cookie
+      name: tt_refresh
+
+  parameters:
+    ID:
+      name: id
+      in: path
+      required: true
+      schema: { $ref: "#/components/schemas/ID" }
+
+  schemas:
+    ID: { type: integer, format: int64, minimum: 1 }
+    Name: { type: string, minLength: 1, maxLength: 200 }
+    Code:
+      type: string
+      minLength: 1
+      maxLength: 32
+      pattern: "^[a-z0-9][a-z0-9_-]*$"
+    Clock:
+      type: string
+      pattern: "^([01][0-9]|2[0-3]):[0-5][0-9](:[0-5][0-9])?$"
+      examples: ["08:30"]
+
+    Error:
+      type: object
+      required: [error]
+      properties:
+        error:
+          type: object
+          required: [code, message]
+          properties:
+            code: { type: string, examples: [not_found] }
+            message: { type: string }
+
+    Role: { type: string, enum: [student, teacher, admin, ai_agent] }
+    User:
+      type: object
+      required: [id, login, role, display_name, teacher_id, group_id, created_at]
+      properties:
+        id: { $ref: "#/components/schemas/ID" }
+        login: { type: string }
+        role: { $ref: "#/components/schemas/Role" }
+        display_name: { type: string }
+        teacher_id: { type: [integer, "null"], format: int64 }
+        group_id: { type: [integer, "null"], format: int64 }
+        created_at: { type: string, format: date-time }
+    Session:
+      type: object
+      required: [user, access_token, expires_at]
+      properties:
+        user: { $ref: "#/components/schemas/User" }
+        access_token: { type: string, description: "HS256 JWT, also set as the tt_access cookie." }
+        expires_at: { type: string, format: date-time }
+
+    Building:
+      type: object
+      required: [id, name, address]
+      properties:
+        id: { $ref: "#/components/schemas/ID" }
+        name: { $ref: "#/components/schemas/Name" }
+        address: { type: string, maxLength: 500 }
+    BuildingInput:
+      type: object
+      additionalProperties: false
+      required: [name]
+      properties:
+        name: { $ref: "#/components/schemas/Name" }
+        address: { type: string, maxLength: 500, default: "" }
+
+    RoomType:
+      type: object
+      additionalProperties: false
+      required: [code, name]
+      properties:
+        code: { $ref: "#/components/schemas/Code" }
+        name: { $ref: "#/components/schemas/Name" }
+
+    Room:
+      type: object
+      required: [id, building_id, name, room_type, capacity]
+      properties:
+        id: { $ref: "#/components/schemas/ID" }
+        building_id: { $ref: "#/components/schemas/ID" }
+        name: { $ref: "#/components/schemas/Name" }
+        room_type: { $ref: "#/components/schemas/Code" }
+        capacity: { type: integer, minimum: 1, maximum: 100000 }
+    RoomInput:
+      type: object
+      additionalProperties: false
+      required: [building_id, name, room_type, capacity]
+      properties:
+        building_id: { $ref: "#/components/schemas/ID" }
+        name: { $ref: "#/components/schemas/Name" }
+        room_type: { $ref: "#/components/schemas/Code" }
+        capacity: { type: integer, minimum: 1, maximum: 100000 }
+
+    Group:
+      type: object
+      required: [id, name, course, size]
+      properties:
+        id: { $ref: "#/components/schemas/ID" }
+        name: { $ref: "#/components/schemas/Name" }
+        course: { type: integer, minimum: 1, maximum: 6 }
+        size: { type: integer, minimum: 0, maximum: 10000 }
+    GroupInput:
+      type: object
+      additionalProperties: false
+      required: [name, size]
+      properties:
+        name: { $ref: "#/components/schemas/Name" }
+        course: { type: integer, minimum: 1, maximum: 6, default: 1 }
+        size: { type: integer, minimum: 0, maximum: 10000 }
+
+    Subgroup:
+      type: object
+      required: [id, group_id, division, part, size]
+      properties:
+        id: { $ref: "#/components/schemas/ID" }
+        group_id: { $ref: "#/components/schemas/ID" }
+        division: { type: string, minLength: 1, maxLength: 50, description: "Name of one way to split the group, e.g. \"lab\"." }
+        part: { type: integer, minimum: 1, maximum: 100 }
+        size: { type: integer, minimum: 0, maximum: 10000 }
+    SubgroupInput:
+      type: object
+      additionalProperties: false
+      required: [division, part, size]
+      properties:
+        division: { type: string, minLength: 1, maxLength: 50 }
+        part: { type: integer, minimum: 1, maximum: 100 }
+        size: { type: integer, minimum: 0, maximum: 10000 }
+
+    Teacher:
+      type: object
+      required: [id, full_name, short_name]
+      properties:
+        id: { $ref: "#/components/schemas/ID" }
+        full_name: { $ref: "#/components/schemas/Name" }
+        short_name: { $ref: "#/components/schemas/Name" }
+    TeacherInput:
+      type: object
+      additionalProperties: false
+      required: [full_name, short_name]
+      properties:
+        full_name: { $ref: "#/components/schemas/Name" }
+        short_name: { $ref: "#/components/schemas/Name" }
+
+    Discipline:
+      type: object
+      required: [id, name]
+      properties:
+        id: { $ref: "#/components/schemas/ID" }
+        name: { $ref: "#/components/schemas/Name" }
+    DisciplineInput:
+      type: object
+      additionalProperties: false
+      required: [name]
+      properties:
+        name: { $ref: "#/components/schemas/Name" }
+
+    Parity: { type: string, enum: [every, odd, even] }
+    AvailabilityEntry:
+      type: object
+      additionalProperties: false
+      required: [day, period, status]
+      properties:
+        day: { type: integer, minimum: 0, maximum: 6, description: 0 = Monday. }
+        period: { type: integer, minimum: 1, maximum: 16 }
+        parity: { allOf: [{ $ref: "#/components/schemas/Parity" }], default: every }
+        status: { type: string, enum: [unavailable, undesired, preferred] }
+    Availability:
+      type: object
+      additionalProperties: false
+      required: [entries]
+      description: Exceptions per slot; a slot without an entry is available with no preference.
+      properties:
+        entries:
+          type: array
+          maxItems: 336
+          items: { $ref: "#/components/schemas/AvailabilityEntry" }
+
+    TimeGrid:
+      type: object
+      additionalProperties: false
+      required: [days, periods_per_day]
+      properties:
+        days: { type: integer, minimum: 1, maximum: 7 }
+        periods_per_day: { type: integer, minimum: 1, maximum: 16 }
+    Period:
+      type: object
+      required: [number, starts_at, ends_at]
+      properties:
+        number: { type: integer, minimum: 1, maximum: 16 }
+        starts_at: { $ref: "#/components/schemas/Clock" }
+        ends_at: { $ref: "#/components/schemas/Clock" }
+
+    AudienceMember:
+      type: object
+      additionalProperties: false
+      required: [group_id]
+      description: A whole group (`division` empty, `part` 0) or part `part` of the group's `division`.
+      properties:
+        group_id: { $ref: "#/components/schemas/ID" }
+        division: { type: string, maxLength: 50, default: "" }
+        part: { type: integer, minimum: 0, maximum: 100, default: 0 }
+    Lesson:
+      type: object
+      required: [id, seq, biweekly]
+      properties:
+        id: { $ref: "#/components/schemas/ID" }
+        seq: { type: integer, minimum: 1 }
+        biweekly: { type: boolean }
+    LessonKind: { type: string, enum: [lecture, seminar, lab] }
+    CurriculumItemInput:
+      type: object
+      additionalProperties: false
+      required: [discipline_id, kind, teacher_id, room_type, audience]
+      properties:
+        discipline_id: { $ref: "#/components/schemas/ID" }
+        kind: { $ref: "#/components/schemas/LessonKind" }
+        teacher_id: { $ref: "#/components/schemas/ID" }
+        room_type: { $ref: "#/components/schemas/Code" }
+        weekly_count: { type: integer, minimum: 0, maximum: 20, default: 0 }
+        biweekly_count: { type: integer, minimum: 0, maximum: 20, default: 0, description: weekly_count + biweekly_count must be positive. }
+        audience:
+          type: array
+          minItems: 1
+          maxItems: 50
+          items: { $ref: "#/components/schemas/AudienceMember" }
+    CurriculumItem:
+      type: object
+      required: [id, discipline_id, kind, teacher_id, room_type, weekly_count, biweekly_count, audience, lessons]
+      properties:
+        id: { $ref: "#/components/schemas/ID" }
+        discipline_id: { $ref: "#/components/schemas/ID" }
+        kind: { $ref: "#/components/schemas/LessonKind" }
+        teacher_id: { $ref: "#/components/schemas/ID" }
+        room_type: { $ref: "#/components/schemas/Code" }
+        weekly_count: { type: integer }
+        biweekly_count: { type: integer }
+        audience: { type: array, items: { $ref: "#/components/schemas/AudienceMember" } }
+        lessons: { type: array, items: { $ref: "#/components/schemas/Lesson" } }
+
+  requestBodies:
+    BuildingInput:
+      required: true
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/BuildingInput" }
+    RoomInput:
+      required: true
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/RoomInput" }
+    GroupInput:
+      required: true
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/GroupInput" }
+    SubgroupInput:
+      required: true
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/SubgroupInput" }
+    TeacherInput:
+      required: true
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/TeacherInput" }
+    DisciplineInput:
+      required: true
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/DisciplineInput" }
+    Availability:
+      required: true
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/Availability" }
+    CurriculumItemInput:
+      required: true
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/CurriculumItemInput" }
+
+  responses:
+    Building:
+      description: The building.
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/Building" }
+    RoomType:
+      description: The room type.
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/RoomType" }
+    Room:
+      description: The room.
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/Room" }
+    Group:
+      description: The group.
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/Group" }
+    Subgroup:
+      description: The subgroup.
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/Subgroup" }
+    Teacher:
+      description: The teacher.
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/Teacher" }
+    Discipline:
+      description: The discipline.
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/Discipline" }
+    Availability:
+      description: The availability exceptions.
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/Availability" }
+    TimeGrid:
+      description: The time grid.
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/TimeGrid" }
+    Period:
+      description: The period.
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/Period" }
+    CurriculumItem:
+      description: The curriculum item with its audience and lessons.
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/CurriculumItem" }
+    BadRequest:
+      description: Malformed request (`invalid_request`).
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/Error" }
+    Unauthorized:
+      description: No valid session (`unauthorized`).
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/Error" }
+    Forbidden:
+      description: The role may not do this (`forbidden`).
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/Error" }
+    NotFound:
+      description: The record does not exist (`not_found`).
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/Error" }
+    Conflict:
+      description: Unique key taken (`already_exists`), record still referenced (`in_use`) or schedule collision (`schedule_conflict`).
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/Error" }
+    Unprocessable:
+      description: Invalid field values (`validation_failed`), missing referenced record (`invalid_reference`) or database constraint (`constraint_violation`).
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/Error" }
+    NoDatabase:
+      description: The server runs without a database (`no_database`).
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/Error" }

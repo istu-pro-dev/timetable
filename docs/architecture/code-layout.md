@@ -61,6 +61,24 @@ login and per client IP with exponential backoff (429 + `Retry-After`).
 An access token stays valid until it expires even after logout or disabling the account; refresh
 sessions are revoked immediately.
 
+### REST API
+
+The contract is the hand-written OpenAPI 3.1 spec `backend/api/openapi.yaml`, served at
+`GET /api/openapi.yaml`; a test fails when a registered route is missing from the spec or the spec
+lists a route that does not exist. Reference data (buildings, room types, rooms + availability,
+groups + subgroups, teachers + availability, disciplines, time grid, periods, curriculum items) has
+list/get/create/update/delete endpoints under `/api/`. Reads need any authenticated user, changes
+need `admin`; every change goes through `Store.WithAudit` with the user as the actor.
+
+Errors are `{"error":{"code":"...","message":"..."}}`: malformed JSON or unknown fields → 400,
+invalid values → 422 `validation_failed`, missing record → 404, unique key → 409 `already_exists`,
+deleting a referenced record → 409 `in_use`, reference to a missing record → 422 `invalid_reference`.
+
+Creating a curriculum item generates its lessons in the same transaction (`weekly_count` weekly
+lessons, then `biweekly_count` biweekly ones, `seq` 1..N). Updating an item regenerates the lessons
+only when a count changes; the old lessons' assignments are deleted with them (`ON DELETE CASCADE`),
+so the item must be placed again in existing schedules.
+
 ### Docker compose stack
 
 | Service | Image / build | Port (host) |
