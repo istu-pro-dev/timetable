@@ -63,3 +63,10 @@ The database itself refuses to store a double booking (arch §7), even if applic
   never renumbered.
 - Violations surface as SQLSTATE `23P01` / `23514`. `store.MapError` maps them to
   `ErrTeacherBusy`, `ErrGroupBusy`, `ErrRoomBusy` and `ErrParityMismatch`.
+
+## Audit log
+
+`audit_log` records every change with `actor_type` (`human`, `ai_agent`, `solver`), `actor_id`, the
+`via_assistant` flag (arch §16.4), the entity, before/after/diff JSON and a reason.
+`Store.WithAudit` runs the change and inserts the audit row in one transaction. A change
+without an audit entry cannot be committed, and a failed audit insert rolls the change back.
