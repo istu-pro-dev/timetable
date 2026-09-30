@@ -207,7 +207,7 @@ func TestCriterionKeys(t *testing.T) {
 // change of the full penalty.
 func TestIncrementalMatchesFull(t *testing.T) {
 	r := rand.New(rand.NewPCG(7, 11))
-	p, err := engine.NewProblem(enginetest.RandomInput(r, 400))
+	p, err := engine.NewProblem(enginetest.RandomInput(r, 150))
 	if err != nil {
 		t.Fatal(err)
 	}

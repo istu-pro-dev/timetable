@@ -303,6 +303,12 @@ var (
 	kindNames       = map[hard.ResourceKind]string{hard.TeacherResource: "teacher", hard.GroupResource: "group", hard.RoomResource: "room"}
 )
 
+// ConvertViolations expresses engine violations with database IDs, in the same format
+// EvaluateMove uses; the solver's stage A report uses it too (arch §5).
+func ConvertViolations(p *engine.Problem, vs []hard.Violation) []Violation {
+	return convert(p, vs)
+}
+
 func convert(p *engine.Problem, vs []hard.Violation) []Violation {
 	out := make([]Violation, 0, len(vs))
 	for _, v := range vs {
