@@ -317,6 +317,34 @@ func TestH8MaxLessonsPerDay(t *testing.T) {
 	}
 }
 
+// Regression: the daily-load message looked the resource up among teachers even for groups and
+// panicked when a group index had no teacher counterpart (found by TestPropCheckerMatchesCounters).
+func TestH8MaxLessonsPerDayMoreGroupsThanTeachers(t *testing.T) {
+	p, err := engine.NewProblem(engine.Input{
+		Grid:             domain.Grid{Days: 1, PeriodsPerDay: 2},
+		MaxLessonsPerDay: 1,
+		Buildings:        []engine.Building{{ID: 1, Name: "A"}},
+		Rooms:            []engine.RoomInput{{ID: 1, Name: "A-1", Building: 1, Type: "seminar", Capacity: 30}},
+		Teachers:         []engine.TeacherInput{{ID: 1, Name: "Иванов"}, {ID: 2, Name: "Петров"}},
+		Groups:           []engine.Group{{ID: 1, Name: "G1"}, {ID: 2, Name: "G2"}, {ID: 3, Name: "G3"}},
+		Disciplines:      []engine.Discipline{{ID: 1, Name: "Математика"}},
+		Lessons: []engine.LessonInput{
+			{ID: 1, Item: 1, Discipline: 1, Teacher: 1, RoomType: "seminar", Audience: domain.Audience{domain.WholeGroup(3)}},
+			{ID: 2, Item: 2, Discipline: 1, Teacher: 2, RoomType: "seminar", Audience: domain.Audience{domain.WholeGroup(3)}},
+		},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	s := engine.NewSchedule(p)
+	place(t, s, 0, slot(domain.Monday, 1), 0)
+	place(t, s, 1, slot(domain.Monday, 2), 0)
+	v := only(t, Check(s, nil), H8SameDay, 0, 1)
+	if v.Kind != GroupResource || v.Resource != 2 || !strings.Contains(v.Message, "группы G3") {
+		t.Fatalf("H8 = %+v", v)
+	}
+}
+
 func TestPolicy(t *testing.T) {
 	p := fixture(t)
 	s := valid(t, p)

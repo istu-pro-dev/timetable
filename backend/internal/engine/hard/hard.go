@@ -377,9 +377,11 @@ func (c *checker) sameDay() {
 			continue
 		}
 		v := Violation{Rule: H8SameDay, Lessons: slices.Clone(ls), Kind: k.kind, Resource: k.resource, Slot: domain.Slot{Day: k.day}}
-		who := c.p.Teachers[k.resource].Name
+		var who string
 		if k.kind == GroupResource {
 			who = "группы " + c.p.Groups[k.resource].Name
+		} else {
+			who = c.p.Teachers[k.resource].Name
 		}
 		v.Message = fmt.Sprintf("%d занятий в день у %s (%s), максимум %d", len(ls), who, dayName(k.day), c.p.MaxLessonsPerDay)
 		c.addOnce(reported, v)
