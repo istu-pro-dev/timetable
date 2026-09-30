@@ -34,7 +34,7 @@ frontend-build:
 
 # Runs the API and the Vite dev server (which proxies /api to the API).
 dev:
-	cd $(BACKEND_DIR) && go run ./cmd/server & \
+	cd $(BACKEND_DIR) && APP_ENV=$${APP_ENV:-dev} go run ./cmd/server & \
 	cd $(FRONTEND_DIR) && npm run dev; \
 	kill %1
 

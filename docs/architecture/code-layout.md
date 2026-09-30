@@ -39,6 +39,28 @@ constraint logic stays pure and fully unit-testable (arch §19).
 
 Health check: `curl localhost:8080/api/healthz` → `{"status":"ok"}`.
 
+### Authentication
+
+Local accounts (arch §16.3 fallback login) live in `users`; passwords are hashed with argon2id.
+`POST /api/auth/login` returns a short-lived HS256 access JWT (15 min) and starts a refresh
+session (30 days, stored hashed in `sessions`). Both are set as `HttpOnly`, `SameSite=Lax` cookies
+(`tt_access`, `tt_refresh` scoped to `/api/auth`); API clients may send the access token as
+`Authorization: Bearer`. `POST /api/auth/refresh` rotates the refresh token, `POST /api/auth/logout`
+revokes it, `GET /api/auth/me` returns the current account. Protected routes answer 401 without a
+valid token and 403 for a wrong role (`auth.Require`). Failed logins are throttled in memory per
+login and per client IP with exponential backoff (429 + `Retry-After`).
+
+| Variable | Meaning |
+|---|---|
+| `APP_ENV` | `dev` allows a built-in insecure `JWT_SECRET` and defaults cookies to non-`Secure` (`make dev` sets it) |
+| `JWT_SECRET` | HS256 key, ≥ 32 bytes; the server refuses to start without it unless `APP_ENV=dev` |
+| `COOKIE_SECURE` | `Secure` cookie attribute; default `true`, `false` in dev |
+| `TRUST_PROXY` | take the client IP from the last `X-Forwarded-For` hop (behind Caddy) |
+| `ADMIN_LOGIN`, `ADMIN_PASSWORD` | create the first admin on startup if no active admin exists (idempotent; a warning is logged when unset) |
+
+An access token stays valid until it expires even after logout or disabling the account; refresh
+sessions are revoked immediately.
+
 ### Docker compose stack
 
 | Service | Image / build | Port (host) |
