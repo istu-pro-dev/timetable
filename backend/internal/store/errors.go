@@ -34,3 +34,31 @@ func MapError(err error) error {
 	}
 	return err
 }
+
+// SQLSTATE codes of integrity constraint violations.
+const (
+	codeUniqueViolation     = "23505"
+	codeForeignKeyViolation = "23503"
+	codeCheckViolation      = "23514"
+	codeNotNullViolation    = "23502"
+)
+
+func pgCode(err error) string {
+	var pgErr *pgconn.PgError
+	if errors.As(err, &pgErr) {
+		return pgErr.Code
+	}
+	return ""
+}
+
+// IsUniqueViolation reports whether err is a unique or primary key violation.
+func IsUniqueViolation(err error) bool { return pgCode(err) == codeUniqueViolation }
+
+// IsForeignKeyViolation reports whether err is a foreign key violation.
+func IsForeignKeyViolation(err error) bool { return pgCode(err) == codeForeignKeyViolation }
+
+// IsCheckViolation reports whether err is a CHECK or NOT NULL violation.
+func IsCheckViolation(err error) bool {
+	c := pgCode(err)
+	return c == codeCheckViolation || c == codeNotNullViolation
+}

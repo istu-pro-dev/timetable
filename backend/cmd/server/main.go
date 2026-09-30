@@ -4,6 +4,7 @@ package main
 import (
 	"context"
 	"errors"
+	"fmt"
 	"log/slog"
 	"net/http"
 	"os"
@@ -12,6 +13,7 @@ import (
 	"time"
 
 	"github.com/istu-pro-dev/timetable/backend/internal/api"
+	"github.com/istu-pro-dev/timetable/backend/internal/auth"
 	"github.com/istu-pro-dev/timetable/backend/internal/store"
 )
 
@@ -27,8 +29,17 @@ func run(logger *slog.Logger) error {
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 	defer stop()
 
+	authCfg, warnings, err := auth.ConfigFromEnv(os.Getenv)
+	if err != nil {
+		return fmt.Errorf("auth config: %w", err)
+	}
+	for _, w := range warnings {
+		logger.Warn(w)
+	}
+
+	var st *store.Store
 	if dbURL := os.Getenv("DATABASE_URL"); dbURL != "" {
-		st, err := store.Open(ctx, dbURL)
+		st, err = store.Open(ctx, dbURL)
 		if err != nil {
 			return err
 		}
@@ -41,6 +52,11 @@ func run(logger *slog.Logger) error {
 		logger.Warn("DATABASE_URL is not set, running without a database")
 	}
 
+	authSvc := auth.NewService(st, authCfg, logger)
+	if err := authSvc.Bootstrap(ctx); err != nil {
+		return err
+	}
+
 	addr := os.Getenv("HTTP_ADDR")
 	if addr == "" {
 		addr = ":8080"
@@ -48,7 +64,7 @@ func run(logger *slog.Logger) error {
 
 	srv := &http.Server{
 		Addr:              addr,
-		Handler:           api.NewRouter(),
+		Handler:           api.NewRouter(api.Deps{Store: st, Auth: authSvc, Logger: logger}),
 		ReadHeaderTimeout: 10 * time.Second,
 	}
 

@@ -255,6 +255,70 @@ func AllParityValues() []Parity {
 	}
 }
 
+type UserRole string
+
+const (
+	UserRoleStudent UserRole = "student"
+	UserRoleTeacher UserRole = "teacher"
+	UserRoleAdmin   UserRole = "admin"
+	UserRoleAiAgent UserRole = "ai_agent"
+)
+
+func (e *UserRole) Scan(src interface{}) error {
+	switch s := src.(type) {
+	case []byte:
+		*e = UserRole(s)
+	case string:
+		*e = UserRole(s)
+	default:
+		return fmt.Errorf("unsupported scan type for UserRole: %T", src)
+	}
+	return nil
+}
+
+type NullUserRole struct {
+	UserRole UserRole
+	Valid    bool // Valid is true if UserRole is not NULL
+}
+
+// Scan implements the Scanner interface.
+func (ns *NullUserRole) Scan(value interface{}) error {
+	if value == nil {
+		ns.UserRole, ns.Valid = "", false
+		return nil
+	}
+	ns.Valid = true
+	return ns.UserRole.Scan(value)
+}
+
+// Value implements the driver Valuer interface.
+func (ns NullUserRole) Value() (driver.Value, error) {
+	if !ns.Valid {
+		return nil, nil
+	}
+	return string(ns.UserRole), nil
+}
+
+func (e UserRole) Valid() bool {
+	switch e {
+	case UserRoleStudent,
+		UserRoleTeacher,
+		UserRoleAdmin,
+		UserRoleAiAgent:
+		return true
+	}
+	return false
+}
+
+func AllUserRoleValues() []UserRole {
+	return []UserRole{
+		UserRoleStudent,
+		UserRoleTeacher,
+		UserRoleAdmin,
+		UserRoleAiAgent,
+	}
+}
+
 type Assignment struct {
 	ScheduleID int64
 	LessonID   int64
@@ -372,6 +436,14 @@ type Schedule struct {
 	CreatedAt pgtype.Timestamptz
 }
 
+type Session struct {
+	ID        int64
+	UserID    int64
+	TokenHash []byte
+	CreatedAt pgtype.Timestamptz
+	ExpiresAt pgtype.Timestamptz
+}
+
 type Subgroup struct {
 	ID       int64
 	GroupID  int64
@@ -398,4 +470,16 @@ type TimeGrid struct {
 	ID            bool
 	Days          int16
 	PeriodsPerDay int16
+}
+
+type User struct {
+	ID           int64
+	Login        string
+	PasswordHash string
+	Role         UserRole
+	DisplayName  string
+	TeacherID    pgtype.Int8
+	GroupID      pgtype.Int8
+	CreatedAt    pgtype.Timestamptz
+	Disabled     bool
 }

@@ -36,6 +36,8 @@ erDiagram
 | `lessons` | schedulable units generated from curriculum items; `biweekly` lessons take an `odd`/`even` slot |
 | `schedules` | a named set of assignments: solver result, working copy, published version |
 | `assignments` | lesson → (day, period, parity) → room, plus the `pinned` flag |
+| `users` | local accounts: lower-case `login`, argon2id `password_hash`, `role` (`student`, `teacher`, `admin`, `ai_agent`), optional `teacher_id` / `group_id` binding, `disabled` |
+| `sessions` | refresh sessions: SHA-256 of the refresh token and its expiry |
 
 Integration tests need `TEST_DATABASE_URL` (a server where the user may create databases). Each
 test gets a fresh migrated database from `internal/store/storetest`.
