@@ -32,19 +32,21 @@ jobs:
       postgres:
         image: postgres:17-alpine
         env:
-          POSTGRES_USER: timetable
-          POSTGRES_PASSWORD: timetable
-          POSTGRES_DB: timetable
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: postgres
         ports:
           - 5432:5432
         options: >-
-          --health-cmd "pg_isready -U timetable -d timetable"
+          --health-cmd "pg_isready -U postgres -d postgres"
           --health-interval 5s
           --health-timeout 5s
           --health-retries 10
     env:
-      # For integration tests (store); unit tests ignore it.
-      DATABASE_URL: postgres://timetable:timetable@localhost:5432/timetable?sslmode=disable
+      # Integration tests (store) create and drop throwaway databases on this server;
+      # unit tests ignore it. The role is a superuser, so CREATE DATABASE is allowed.
+      TEST_DATABASE_URL: postgres://postgres:postgres@localhost:5432/postgres?sslmode=disable
+      DATABASE_URL: postgres://postgres:postgres@localhost:5432/postgres?sslmode=disable
     steps:
       - uses: actions/checkout@v7
 
