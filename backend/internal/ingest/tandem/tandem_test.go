@@ -168,7 +168,7 @@ func TestDetect(t *testing.T) {
 	if Detect(&sheet.Workbook{}) {
 		t.Error("empty workbook detected")
 	}
-	if _, err := Convert(&sheet.Workbook{}, "x.xls", nil); err != ErrNotTandem {
+	if _, err := Convert(&sheet.Workbook{}, "x.xls", nil); !errors.Is(err, ErrNotTandem) {
 		t.Errorf("err = %v", err)
 	}
 }

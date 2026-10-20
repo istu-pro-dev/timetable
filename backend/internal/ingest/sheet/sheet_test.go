@@ -1,6 +1,7 @@
 package sheet
 
 import (
+	"errors"
 	"os"
 	"testing"
 )
@@ -68,7 +69,7 @@ func TestParseSSTTruncated(t *testing.T) {
 }
 
 func TestReadRejectsGarbage(t *testing.T) {
-	if _, err := Read([]byte("hello")); err != ErrUnknownFormat {
+	if _, err := Read([]byte("hello")); !errors.Is(err, ErrUnknownFormat) {
 		t.Fatalf("err = %v, want ErrUnknownFormat", err)
 	}
 	broken := append(append([]byte{}, cfbMagic...), make([]byte, 600)...)

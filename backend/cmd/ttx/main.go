@@ -61,43 +61,56 @@ func run(args []string, out io.Writer) error {
 			enc.SetIndent("", "  ")
 			return enc.Encode(rep)
 		}
-		printReport(out, rep)
-		return nil
+		return printReport(out, rep)
 	}
 	return fmt.Errorf("unknown command %q", args[0])
 }
 
-func printReport(w io.Writer, r *review.Report) {
+// printer remembers the first write error so the report code stays linear.
+type printer struct {
+	w   io.Writer
+	err error
+}
+
+func (p *printer) printf(format string, args ...any) {
+	if p.err == nil {
+		_, p.err = fmt.Fprintf(p.w, format, args...)
+	}
+}
+
+func printReport(out io.Writer, r *review.Report) error {
+	w := &printer{w: out}
 	st := r.Stats
-	fmt.Fprintf(w, "%s\nзанятий %d, групп %d, преподавателей %d, аудиторий %d, дисциплин %d\n\n",
+	w.printf("%s\nзанятий %d, групп %d, преподавателей %d, аудиторий %d, дисциплин %d\n\n",
 		r.Source.File, st.Lessons, st.Groups, st.Teachers, st.Rooms, st.Disciplines)
 
-	fmt.Fprintf(w, "Накладки: %d\n", len(r.Violations))
+	w.printf("Накладки: %d\n", len(r.Violations))
 	for _, v := range r.Violations {
-		fmt.Fprintf(w, "  [%s] %s\n", v.Rule, v.Message)
+		w.printf("  [%s] %s\n", v.Rule, v.Message)
 	}
 
-	fmt.Fprintf(w, "\nМягкие критерии (итого %.0f):\n", r.SoftTotal)
+	w.printf("\nМягкие критерии (итого %.0f):\n", r.SoftTotal)
 	for _, c := range r.Soft {
 		if !c.Available {
-			fmt.Fprintf(w, "  %-34s нет данных\n", c.Title)
+			w.printf("  %-34s нет данных\n", c.Title)
 			continue
 		}
-		fmt.Fprintf(w, "  %-34s %5d × %g = %g\n", c.Title, c.Value, c.Weight, c.Weighted)
+		w.printf("  %-34s %5d × %g = %g\n", c.Title, c.Value, c.Weight, c.Weighted)
 	}
 
 	worst := slices.Clone(r.Groups)
 	slices.SortFunc(worst, func(a, b review.EntityScore) int { return (b.Gaps + b.Transitions) - (a.Gaps + a.Transitions) })
-	fmt.Fprintln(w, "\nГруппы с наибольшим числом окон и переходов:")
+	w.printf("\nГруппы с наибольшим числом окон и переходов:\n")
 	for _, g := range worst[:min(10, len(worst))] {
-		fmt.Fprintf(w, "  %-14s окон %2d, переходов %2d, максимум пар в день %d\n", g.Name, g.Gaps, g.Transitions, g.MaxPerDay)
+		w.printf("  %-14s окон %2d, переходов %2d, максимум пар в день %d\n", g.Name, g.Gaps, g.Transitions, g.MaxPerDay)
 	}
 
 	if len(r.Issues) > 0 {
-		fmt.Fprintf(w, "\nКачество данных (%d):\n", len(r.Issues))
+		w.printf("\nКачество данных (%d):\n", len(r.Issues))
 		for _, is := range r.Issues {
-			fmt.Fprintf(w, "  %s: %s\n", is.Code, is.Message)
+			w.printf("  %s: %s\n", is.Code, is.Message)
 		}
 	}
-	fmt.Fprintln(w, "\nОграничения проверки:\n  "+strings.Join(r.Notes, "\n  "))
+	w.printf("\nОграничения проверки:\n  %s\n", strings.Join(r.Notes, "\n  "))
+	return w.err
 }
