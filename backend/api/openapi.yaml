@@ -33,6 +33,7 @@ tags:
   - name: disciplines
   - name: time-grid
   - name: curriculum
+  - name: review
 
 paths:
   /api/healthz:
@@ -51,6 +52,49 @@ paths:
                 required: [status]
                 properties:
                   status: { type: string, const: ok }
+
+  /api/review:
+    post:
+      tags: [review]
+      operationId: reviewTimetable
+      summary: Check an uploaded timetable
+      description: |
+        Parses a timetable file and runs the hard and soft checks on it as it is (every lesson
+        pinned). Accepts a Тандем weekly timetable (.xls/.xlsx) or a ttx/1 file (JSON Lines,
+        docs/istu-data-format.md §4). Nothing is stored and no account is needed; at most two
+        reviews run at once (429 `busy` otherwise), files are limited to 20 MB (413 `too_large`).
+      security: []
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              required: [file]
+              properties:
+                file: { type: string, format: binary }
+      responses:
+        "200":
+          description: The review report.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ReviewReport" }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "413":
+          description: The file is too large (`too_large`).
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+        "422":
+          description: Unsupported or malformed file (`unsupported_file`, `validation_failed`).
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+        "429":
+          description: Another review is running (`busy`).
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
 
   /api/openapi.yaml:
     get:
@@ -834,6 +878,143 @@ components:
           properties:
             code: { type: string, examples: [not_found] }
             message: { type: string }
+
+    ReviewReport:
+      type: object
+      required: [source, periods, stats, lessons, rooms, violations, soft, soft_total, groups, teachers, issues, notes]
+      properties:
+        source:
+          type: object
+          properties:
+            id: { type: string }
+            adapter: { type: string, examples: [tandem-xls-t1] }
+            file: { type: string }
+            sha256: { type: string }
+            title: { type: string }
+        periods:
+          type: array
+          items:
+            type: object
+            required: [n, start, end]
+            properties:
+              n: { type: integer }
+              start: { type: string, examples: ["08:30"] }
+              end: { type: string, examples: ["10:00"] }
+        stats:
+          type: object
+          required: [lessons, groups, teachers, rooms, disciplines, hard]
+          properties:
+            lessons: { type: integer }
+            groups: { type: integer }
+            teachers: { type: integer }
+            rooms: { type: integer }
+            disciplines: { type: integer }
+            hard: { type: integer }
+        lessons:
+          type: array
+          items: { $ref: "#/components/schemas/ReviewLesson" }
+        rooms:
+          type: array
+          items:
+            type: object
+            required: [key, building, type, title, capacity]
+            properties:
+              key: { type: string }
+              building: { type: string }
+              type: { type: string, examples: [computer, lab, special, general, sport, unknown] }
+              title: { type: string }
+              capacity: { type: [integer, "null"] }
+        violations:
+          type: array
+          items:
+            type: object
+            required: [rule, title, message, lesson_ids]
+            properties:
+              rule: { type: string, examples: [H1] }
+              title: { type: string }
+              message: { type: string }
+              lesson_ids: { type: array, items: { type: integer } }
+              resource:
+                type: object
+                required: [kind, name]
+                properties:
+                  kind: { type: string, enum: [teacher, group, room] }
+                  name: { type: string }
+              day: { type: string, enum: [mon, tue, wed, thu, fri, sat, sun] }
+              period: { type: integer }
+        soft:
+          type: array
+          items:
+            type: object
+            required: [key, title, value, weight, weighted, available]
+            properties:
+              key: { type: string }
+              title: { type: string }
+              value: { type: integer }
+              weight: { type: number }
+              weighted: { type: number }
+              available: { type: boolean, description: false when the data the criterion needs is missing }
+        soft_total: { type: number }
+        groups:
+          type: array
+          items: { $ref: "#/components/schemas/ReviewScore" }
+        teachers:
+          type: array
+          items: { $ref: "#/components/schemas/ReviewScore" }
+        issues:
+          type: array
+          items:
+            type: object
+            required: [kind, code, message]
+            properties:
+              kind: { type: string, const: issue }
+              code: { type: string }
+              ref: { $ref: "#/components/schemas/SourceRef" }
+              message: { type: string }
+        notes: { type: array, items: { type: string } }
+    ReviewLesson:
+      type: object
+      description: An observed lesson in ttx/1 form.
+      required: [id, refs, audience, day, period, parity, lesson_type, discipline, teachers]
+      properties:
+        id: { type: integer }
+        refs: { type: array, items: { $ref: "#/components/schemas/SourceRef" } }
+        audience:
+          type: array
+          items:
+            type: object
+            required: [group, subgroup]
+            properties:
+              group: { type: string }
+              subgroup: { type: [integer, "null"] }
+        day: { type: string, enum: [mon, tue, wed, thu, fri, sat, sun] }
+        period: { type: integer }
+        parity: { type: string, enum: [every, odd, even] }
+        lesson_type: { type: string, examples: [lecture, practice, lab, curator, internship] }
+        discipline: { type: string }
+        teachers: { type: array, items: { type: string } }
+        room: { type: string }
+        place: { type: string, examples: [online, none] }
+        raw: { type: object, additionalProperties: { type: string } }
+        note: { type: string }
+        flags: { type: array, items: { type: string } }
+    ReviewScore:
+      type: object
+      required: [name, lessons, gaps, transitions, max_per_day, conflicts]
+      properties:
+        name: { type: string }
+        lessons: { type: integer, description: lessons per two-week cycle }
+        gaps: { type: integer }
+        transitions: { type: integer }
+        max_per_day: { type: integer }
+        conflicts: { type: integer }
+    SourceRef:
+      type: object
+      required: [sheet, row, col]
+      properties:
+        sheet: { type: string }
+        row: { type: integer }
+        col: { type: string }
 
     Role: { type: string, enum: [student, teacher, admin, ai_agent] }
     User:

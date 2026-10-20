@@ -21,3 +21,216 @@ body {
 .app-main {
   padding: 24px;
 }
+
+.app-header {
+  display: flex;
+  gap: 24px;
+  align-items: center;
+}
+
+.app-header nav {
+  display: flex;
+  gap: 16px;
+  font-weight: 400;
+}
+
+.app-header nav a {
+  color: inherit;
+  text-decoration: none;
+  opacity: 0.7;
+}
+
+.app-header nav a.active {
+  opacity: 1;
+  text-decoration: underline;
+}
+
+.muted {
+  opacity: 0.65;
+}
+
+.small {
+  font-size: 12px;
+}
+
+.error {
+  color: #d33;
+}
+
+.upload {
+  display: inline-block;
+  padding: 16px;
+  margin: 8px 0 16px;
+  border: 2px dashed color-mix(in srgb, currentColor 30%, transparent);
+  border-radius: 8px;
+}
+
+.stats {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  margin: 16px 0;
+}
+
+.stat {
+  padding: 10px 16px;
+  border-radius: 8px;
+  background: color-mix(in srgb, currentColor 6%, transparent);
+  min-width: 110px;
+}
+
+.stat.bad {
+  background: color-mix(in srgb, #d33 18%, transparent);
+}
+
+.stat-value {
+  font-size: 22px;
+  font-weight: 600;
+}
+
+.stat-label {
+  font-size: 12px;
+  opacity: 0.7;
+}
+
+.controls {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+  margin-bottom: 12px;
+}
+
+.controls select,
+.toggle button {
+  font: inherit;
+  padding: 4px 8px;
+}
+
+.toggle button.on {
+  font-weight: 600;
+  outline: 2px solid currentColor;
+}
+
+.grid-wrap,
+.scroll {
+  overflow-x: auto;
+}
+
+.scroll {
+  max-height: 420px;
+  overflow-y: auto;
+}
+
+.grid {
+  border-collapse: collapse;
+  width: 100%;
+  table-layout: fixed;
+  min-width: 760px;
+}
+
+.grid th,
+.grid td {
+  border: 1px solid color-mix(in srgb, currentColor 15%, transparent);
+  padding: 4px;
+  vertical-align: top;
+}
+
+.grid tbody th {
+  width: 72px;
+}
+
+.lesson {
+  border-radius: 6px;
+  padding: 4px 6px;
+  margin-bottom: 4px;
+  background: color-mix(in srgb, currentColor 6%, transparent);
+  border-left: 4px solid #888;
+  font-size: 13px;
+}
+
+.lesson.t-lecture {
+  border-left-color: #3b82f6;
+}
+
+.lesson.t-practice {
+  border-left-color: #10b981;
+}
+
+.lesson.t-lab {
+  border-left-color: #a855f7;
+}
+
+.lesson.conflict {
+  background: color-mix(in srgb, #d33 18%, transparent);
+  outline: 1px solid #d33;
+}
+
+.lesson.selected {
+  outline: 3px solid #f59e0b;
+}
+
+.lesson-head {
+  display: flex;
+  gap: 4px;
+  flex-wrap: wrap;
+}
+
+.lesson-title {
+  font-weight: 600;
+}
+
+.badge {
+  font-size: 11px;
+  padding: 0 4px;
+  border-radius: 4px;
+  background: color-mix(in srgb, currentColor 12%, transparent);
+}
+
+.badge.ghost {
+  background: none;
+  opacity: 0.6;
+}
+
+.violations li {
+  margin-bottom: 10px;
+}
+
+.rule {
+  font-family: monospace;
+  font-weight: 600;
+  color: #d33;
+}
+
+.link {
+  background: none;
+  border: none;
+  padding: 0;
+  color: #3b82f6;
+  cursor: pointer;
+  font: inherit;
+  text-align: left;
+}
+
+.table {
+  border-collapse: collapse;
+  width: 100%;
+}
+
+.table th,
+.table td {
+  text-align: left;
+  padding: 4px 8px;
+  border-bottom: 1px solid color-mix(in srgb, currentColor 12%, transparent);
+}
+
+.sortable {
+  cursor: pointer;
+  user-select: none;
+}
+
+.two-col {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(380px, 1fr));
+  gap: 24px;
+}

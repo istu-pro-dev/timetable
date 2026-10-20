@@ -245,6 +245,31 @@ func (e *Evaluator) Full(s *engine.Schedule) Breakdown {
 	return b
 }
 
+// ForGroup returns the penalties of group g's days in both weeks: gaps, building transitions
+// and isolated lessons.
+func (e *Evaluator) ForGroup(s *engine.Schedule, g int32) Breakdown {
+	var b Breakdown
+	for w := uint8(0); w < 2; w++ {
+		for d := range e.p.Grid.Days {
+			e.measure(s, Scope{Kind: GroupDay, ID: int64(g), Day: domain.Day(d), Week: w}, &b)
+		}
+	}
+	return b
+}
+
+// ForTeacher returns the penalties of teacher t's days and weeks: gaps, building transitions
+// and teaching days.
+func (e *Evaluator) ForTeacher(s *engine.Schedule, t int32) Breakdown {
+	var b Breakdown
+	for w := uint8(0); w < 2; w++ {
+		for d := range e.p.Grid.Days {
+			e.measure(s, Scope{Kind: TeacherDay, ID: int64(t), Day: domain.Day(d), Week: w}, &b)
+		}
+		e.measure(s, Scope{Kind: TeacherWeek, ID: int64(t), Week: w}, &b)
+	}
+	return b
+}
+
 func (e *Evaluator) measure(s *engine.Schedule, sc Scope, b *Breakdown) {
 	switch sc.Kind {
 	case GroupDay:

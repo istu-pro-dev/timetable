@@ -52,6 +52,7 @@ func newServer(d Deps) *server {
 		s.handle(pattern, authRoutes[pattern])
 	}
 	s.registerReference()
+	s.registerReview()
 	return s
 }
 
