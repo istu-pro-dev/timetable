@@ -187,6 +187,12 @@ func (ss *ScopeSet) add(s Scope) {
 // Len returns the number of scopes.
 func (ss *ScopeSet) Len() int { return len(ss.list) }
 
+// Reset empties the set and keeps its memory, for evaluating many moves in a loop.
+func (ss *ScopeSet) Reset() {
+	ss.list = ss.list[:0]
+	clear(ss.seen)
+}
+
 // AddLesson adds the scopes lesson l affects when it has assignment a. Call it with both the
 // old and the new assignment of every lesson a move changes.
 func (e *Evaluator) AddLesson(ss *ScopeSet, l int32, a engine.Assignment) {

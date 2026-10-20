@@ -5,12 +5,13 @@ import (
 	"slices"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/istu-pro-dev/timetable/backend/internal/ingest"
 	"github.com/istu-pro-dev/timetable/backend/internal/ingest/ttx"
 )
 
-func load(t *testing.T, ttxText string) *Report {
+func analyzeTTX(t *testing.T, ttxText string) *Report {
 	t.Helper()
 	b, err := ttx.Read(strings.NewReader(ttxText))
 	if err != nil {
@@ -68,7 +69,7 @@ func TestAnalyzeFixture(t *testing.T) {
 }
 
 func TestSubgroupsInParallelAreNotAConflict(t *testing.T) {
-	r := load(t, `{"kind":"lesson","id":1,"audience":[{"group":"G","subgroup":1}],"day":"mon","period":1,"parity":"odd","lesson_type":"lab","discipline":"A","teachers":["T1"],"room":"1"}
+	r := analyzeTTX(t, `{"kind":"lesson","id":1,"audience":[{"group":"G","subgroup":1}],"day":"mon","period":1,"parity":"odd","lesson_type":"lab","discipline":"A","teachers":["T1"],"room":"1"}
 {"kind":"lesson","id":2,"audience":[{"group":"G","subgroup":2}],"day":"mon","period":1,"parity":"odd","lesson_type":"lab","discipline":"B","teachers":["T2"],"room":"2"}
 {"kind":"lesson","id":3,"audience":[{"group":"G"}],"day":"mon","period":1,"parity":"even","lesson_type":"lecture","discipline":"C","teachers":["T1"],"room":"1"}`)
 	if len(r.Violations) != 0 {
@@ -77,7 +78,7 @@ func TestSubgroupsInParallelAreNotAConflict(t *testing.T) {
 }
 
 func TestGroupConflictAcrossParities(t *testing.T) {
-	r := load(t, `{"kind":"lesson","id":1,"audience":[{"group":"G"}],"day":"tue","period":2,"parity":"every","lesson_type":"lecture","discipline":"A","teachers":["T1"],"room":"1"}
+	r := analyzeTTX(t, `{"kind":"lesson","id":1,"audience":[{"group":"G"}],"day":"tue","period":2,"parity":"every","lesson_type":"lecture","discipline":"A","teachers":["T1"],"room":"1"}
 {"kind":"lesson","id":2,"audience":[{"group":"G","subgroup":1}],"day":"tue","period":2,"parity":"even","lesson_type":"lab","discipline":"B","teachers":["T2"],"place":"online"}`)
 	if got := rules(r); !slices.Equal(got, []string{"H2 G"}) {
 		t.Errorf("violations = %v", got)
@@ -85,7 +86,7 @@ func TestGroupConflictAcrossParities(t *testing.T) {
 }
 
 func TestCapacityCheckedWhenKnown(t *testing.T) {
-	r := load(t, `{"kind":"group","key":"G","size":30}
+	r := analyzeTTX(t, `{"kind":"group","key":"G","size":30}
 {"kind":"room","key":"1","building":"1","type":"general","title":"1","capacity":20}
 {"kind":"lesson","id":1,"audience":[{"group":"G"}],"day":"mon","period":1,"lesson_type":"lecture","discipline":"A","teachers":["T"],"room":"1"}`)
 	if got := rules(r); !slices.Equal(got, []string{"H6 1"}) {
@@ -99,7 +100,7 @@ func TestCapacityCheckedWhenKnown(t *testing.T) {
 }
 
 func TestScores(t *testing.T) {
-	r := load(t, `{"kind":"room","key":"1-1","building":"1","type":"general","title":"1-1","capacity":null}
+	r := analyzeTTX(t, `{"kind":"room","key":"1-1","building":"1","type":"general","title":"1-1","capacity":null}
 {"kind":"room","key":"2-1","building":"2","type":"general","title":"2-1","capacity":null}
 {"kind":"lesson","id":1,"audience":[{"group":"G"}],"day":"mon","period":1,"lesson_type":"lecture","discipline":"A","teachers":["T"],"room":"1-1"}
 {"kind":"lesson","id":2,"audience":[{"group":"G"}],"day":"mon","period":3,"lesson_type":"lecture","discipline":"B","teachers":["T"],"room":"2-1"}`)
@@ -107,5 +108,32 @@ func TestScores(t *testing.T) {
 	// Every-week lessons count in both weeks: one gap and one transition per week.
 	if g.Name != "G" || g.Lessons != 4 || g.Gaps != 2 || g.Transitions != 2 || g.MaxPerDay != 2 {
 		t.Errorf("group score = %+v", g)
+	}
+}
+
+func TestImproveRemovesConflictsWithFewMoves(t *testing.T) {
+	data, err := os.ReadFile("../ingest/tandem/testdata/t1.xls")
+	if err != nil {
+		t.Fatal(err)
+	}
+	b, err := ingest.Load("t1.xls", data)
+	if err != nil {
+		t.Fatal(err)
+	}
+	imp, err := Improve(t.Context(), b, ImproveOptions{Budget: 300 * time.Millisecond, Seed: 1})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if imp.HardBefore != 2 || imp.HardAfter != 0 {
+		t.Errorf("hard violations %d → %d", imp.HardBefore, imp.HardAfter)
+	}
+	// One of Соболева's two labs has to move; the cost per change keeps the rest in place.
+	if len(imp.Moves) == 0 || len(imp.Moves) > 3 {
+		t.Errorf("moves = %+v", imp.Moves)
+	}
+	for _, m := range imp.Moves {
+		if m.From == m.To || m.Ref == nil {
+			t.Errorf("move = %+v", m)
+		}
 	}
 }
