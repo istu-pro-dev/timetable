@@ -254,10 +254,7 @@ func (o *Optimizer) Run(ctx context.Context) Stats {
 	}
 	temp := t0
 	firstStep := step
-	for {
-		if o.opt.MaxSteps > 0 && step >= o.opt.MaxSteps {
-			break
-		}
+	for o.opt.MaxSteps == 0 || step < o.opt.MaxSteps {
 		if step&255 == 0 {
 			elapsed := elapsed0 + time.Since(start)
 			frac := elapsed.Seconds() / o.opt.Budget.Seconds()
