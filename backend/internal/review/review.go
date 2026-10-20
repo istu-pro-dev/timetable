@@ -116,35 +116,12 @@ type model struct {
 
 // Analyze evaluates the batch.
 func Analyze(b *ttx.Batch) (*Report, error) {
-	if err := b.Validate(); err != nil {
-		return nil, err
-	}
-	m, err := build(b)
+	m, p, s, pol, err := load(b)
 	if err != nil {
 		return nil, err
 	}
-	p, err := engine.NewProblem(m.in)
-	if err != nil {
-		return nil, err
-	}
-	s := engine.NewSchedule(p)
-	for _, l := range b.Lessons {
-		li, _ := p.LessonIndex(domain.LessonID(l.ID))
-		room := engine.None
-		if rid := m.lessonRoom[l.ID]; rid != 0 {
-			room, _ = p.RoomIndex(rid)
-		}
-		if err := s.Place(li, slotOf(l), room); err != nil {
-			return nil, fmt.Errorf("lesson %d: %w", l.ID, err)
-		}
-		s.SetPinned(li, true)
-	}
-
-	pol := hard.Policy{
-		hard.H4Availability: hard.Off, hard.H5RoomType: hard.Off, hard.H7Completeness: hard.Off, hard.H8SameDay: hard.Off,
-	}
-	if !m.capacityOK {
-		pol[hard.H6Capacity] = hard.Off
+	for l := range p.Lessons {
+		s.SetPinned(int32(l), true)
 	}
 	vs := hard.Check(s, pol)
 	r := &Report{
@@ -162,6 +139,42 @@ func Analyze(b *ttx.Batch) (*Report, error) {
 		r.Issues = []ttx.Issue{}
 	}
 	return r, nil
+}
+
+// load builds the engine problem of a batch, places every lesson as published and returns the
+// hard-rule policy that fits the data: rules that need missing data are off.
+func load(b *ttx.Batch) (*model, *engine.Problem, *engine.Schedule, hard.Policy, error) {
+	if err := b.Validate(); err != nil {
+		return nil, nil, nil, nil, err
+	}
+	m, err := build(b)
+	if err != nil {
+		return nil, nil, nil, nil, err
+	}
+	p, err := engine.NewProblem(m.in)
+	if err != nil {
+		return nil, nil, nil, nil, err
+	}
+	s := engine.NewSchedule(p)
+	for _, l := range b.Lessons {
+		li, _ := p.LessonIndex(domain.LessonID(l.ID))
+		room := engine.None
+		if rid := m.lessonRoom[l.ID]; rid != 0 {
+			room, _ = p.RoomIndex(rid)
+		}
+		if err := s.Place(li, slotOf(l), room); err != nil {
+			return nil, nil, nil, nil, fmt.Errorf("lesson %d: %w", l.ID, err)
+		}
+	}
+	pol := hard.Policy{
+		// H5 holds by construction (a lesson requires the type of its own room) and keeps
+		// stage B from swapping a lecture into a lab.
+		hard.H4Availability: hard.Off, hard.H7Completeness: hard.Off, hard.H8SameDay: hard.Off,
+	}
+	if !m.capacityOK {
+		pol[hard.H6Capacity] = hard.Off
+	}
+	return m, p, s, pol, nil
 }
 
 func slotOf(l ttx.Lesson) domain.Slot {
